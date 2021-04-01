@@ -3,6 +3,6 @@ package manager
 import "context"
 
 type Manager interface {
-	Deploy(context.Context, DeployArgs) error
-	Delete(context.Context, DeleteArgs) error
+	CreateInstance(context.Context, CreateArgs) error
+	DeleteInstance(context.Context, DeleteArgs) error
 }

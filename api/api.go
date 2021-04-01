@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"github.com/arthurcgc/waf/internal/pkg/manager"
+	"github.com/arthurcgc/waf-api/internal/pkg/manager"
 	echo "github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/sirupsen/logrus"
@@ -42,8 +42,8 @@ func New() (*Api, error) {
 }
 
 func (a *Api) setRoutes() {
-	a.server.POST("/", a.deploy)
-	a.server.DELETE("/", a.delete)
+	a.server.POST("/", a.createInstance)
+	a.server.DELETE("/", a.deleteInstance)
 	a.server.GET("/", a.healthcheck)
 }
 

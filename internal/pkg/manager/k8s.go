@@ -5,23 +5,22 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"strings"
 
-	"github.com/spf13/viper"
-	"github.com/tsuru/nginx-operator/api/v1alpha1"
-	v1 "k8s.io/api/core/v1"
+	wafv1 "github.com/arthurcgc/waf-operator/api/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
 
+var wafGVR = schema.GroupVersionResource{Group: "waf.arthurcgc.waf-operator", Version: "v1", Resource: "wafs"}
+
 type k8s struct {
 	dynamicClient dynamic.Interface
-	defaultClient *kubernetes.Clientset
 }
 
 func NewInCluster() (Manager, error) {
@@ -32,10 +31,6 @@ func NewInCluster() (Manager, error) {
 	}
 
 	mgr.dynamicClient, err = dynamic.NewForConfig(config)
-	if err != nil {
-		return mgr, err
-	}
-	mgr.defaultClient, err = kubernetes.NewForConfig(config)
 	if err != nil {
 		return mgr, err
 	}
@@ -62,74 +57,53 @@ func NewOutsideCluster() (Manager, error) {
 	if err != nil {
 		return mgr, err
 	}
-	mgr.defaultClient, err = kubernetes.NewForConfig(config)
-	if err != nil {
-		return mgr, err
-	}
 
 	return mgr, nil
 }
 
-func (k *k8s) Deploy(ctx context.Context, args DeployArgs) error {
-	nginxCM := fmt.Sprintf("%s-conf", args.Name)
-	wafCM := fmt.Sprintf("%s-conf-extra", args.Name)
-
-	if err := k.deployConf(ctx, args, nginxCM, wafCM); err != nil {
-		return err
-	}
-	if err := k.deployNginx(ctx, args, nginxCM, wafCM); err != nil {
+func (k *k8s) CreateInstance(ctx context.Context, args CreateArgs) error {
+	if err := k.createWafInstance(ctx, args); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (k *k8s) Delete(ctx context.Context, args DeleteArgs) error {
-	nginxCM := fmt.Sprintf("%s-conf", args.Name)
-	wafCM := fmt.Sprintf("%s-conf-extra", args.Name)
-
-	if err := k.deleteConf(ctx, args, nginxCM, wafCM); err != nil {
-		return err
-	}
-	if err := k.deleteNginx(ctx, args, nginxCM, wafCM); err != nil {
+func (k *k8s) DeleteInstance(ctx context.Context, args DeleteArgs) error {
+	if err := k.deleteWafInstance(ctx, args); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (k *k8s) deployNginx(ctx context.Context, args DeployArgs, nginxCM, wafCM string) error {
-	nginxGVR := schema.GroupVersionResource{Group: "nginx.tsuru.io", Version: "v1alpha1", Resource: "nginxes"}
-	nginx := &unstructured.Unstructured{
+func (k *k8s) createWafInstance(ctx context.Context, args CreateArgs) error {
+	protoPrefix := "http://"
+	if strings.Compare("HTTPS", args.Bind.Protocol) == 0 {
+		protoPrefix = "https://"
+	}
+	waf := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "nginx.tsuru.io/v1alpha1",
-			"kind":       "Nginx",
+			"apiVersion": "waf.arthurcgc.waf-operator/v1",
+			"kind":       "Waf",
 			"metadata": map[string]interface{}{
 				"name": args.Name,
 			},
 			"spec": map[string]interface{}{
 				"replicas": args.Replicas,
-				"image":    viper.GetString("image"),
-				"config": map[string]interface{}{
-					"kind": "ConfigMap",
-					"name": nginxCM,
+				"planName": args.PlanName,
+				"bind": wafv1.Bind{
+					Name:     args.Bind.ServiceName,
+					Hostname: fmt.Sprintf("%s%s.%s.svc.cluster.local", protoPrefix, args.Bind.ServiceName, args.Bind.Namespace),
 				},
 				"service": map[string]interface{}{
 					"type": "NodePort",
-				},
-				// ExtraFiles references to additional files into a object in the cluster.
-				// These additional files will be mounted on `/etc/nginx/extra_files`.
-				"extraFiles": &v1alpha1.FilesRef{
-					Name: wafCM,
-					Files: map[string]string{
-						"modsec-includes.conf": "modsec-includes.conf",
-					},
 				},
 			},
 		},
 	}
 
-	_, err := k.dynamicClient.Resource(nginxGVR).Namespace(args.Namespace).Create(ctx, nginx, metav1.CreateOptions{})
+	_, err := k.dynamicClient.Resource(wafGVR).Namespace(args.Namespace).Create(ctx, waf, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
@@ -137,90 +111,8 @@ func (k *k8s) deployNginx(ctx context.Context, args DeployArgs, nginxCM, wafCM s
 	return nil
 }
 
-func (k *k8s) deployConf(ctx context.Context, args DeployArgs, nginxCM, wafCM string) error {
-	immutable := new(bool)
-	wafConf := &v1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      wafCM,
-			Namespace: args.Namespace,
-		},
-
-		Immutable: immutable,
-		Data: map[string]string{
-			"modsec-includes.conf": `
-Include /usr/local/waf-conf/modsecurity-recommended.conf
-Include /usr/local/waf-conf/crs-setup.conf
-Include /usr/local/waf-conf/rules/*.conf
-			`,
-		},
-	}
-	_, err := k.defaultClient.CoreV1().ConfigMaps(args.Namespace).Create(ctx, wafConf, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
-
-	// proxy_pass http://go-hostname.backend.svc.cluster.local:80;
-	mainConf := &v1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      nginxCM,
-			Namespace: args.Namespace,
-		},
-
-		Immutable: immutable,
-		Data: map[string]string{
-			"nginx.conf": fmt.Sprintf(`
-	load_module modules/ngx_http_modsecurity_module.so;
-	events {}
-
-	http {
-		server {
-		listen 8080;
-
-		modsecurity on;
-		modsecurity_rules_file /etc/nginx/extra_files/modsec-includes.conf;
-
-		location / {
-			proxy_pass %s;
-		}
-
-		location /nginx-health {
-			access_log off;
-			return 200 "healthy\n";
-		}
-	}
-	}`, args.ProxyPass),
-		},
-	}
-	_, err = k.defaultClient.CoreV1().ConfigMaps(args.Namespace).Create(ctx, mainConf, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (k *k8s) deleteConf(ctx context.Context, args DeleteArgs, nginxCM, wafCM string) error {
-	if err := k.defaultClient.CoreV1().ConfigMaps(args.Namespace).Delete(ctx, wafCM, metav1.DeleteOptions{}); err != nil {
-		return err
-	}
-	if err := k.defaultClient.CoreV1().ConfigMaps(args.Namespace).Delete(ctx, nginxCM, metav1.DeleteOptions{}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (k *k8s) deleteNginx(ctx context.Context, args DeleteArgs, nginxCM, wafCM string) error {
-	nginxGVR := schema.GroupVersionResource{Group: "nginx.tsuru.io", Version: "v1alpha1", Resource: "nginxes"}
-	if err := k.dynamicClient.Resource(nginxGVR).Namespace(args.Namespace).Delete(ctx, args.Name, metav1.DeleteOptions{}); err != nil {
+func (k *k8s) deleteWafInstance(ctx context.Context, args DeleteArgs) error {
+	if err := k.dynamicClient.Resource(wafGVR).Namespace(args.Namespace).Delete(ctx, args.Name, metav1.DeleteOptions{}); err != nil {
 		return err
 	}
 

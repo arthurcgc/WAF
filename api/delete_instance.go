@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/arthurcgc/waf/internal/pkg/manager"
+	"github.com/arthurcgc/waf-api/internal/pkg/manager"
 	echo "github.com/labstack/echo/v4"
 )
 
@@ -14,7 +14,7 @@ type DeleteOpts struct {
 	Namespace string
 }
 
-func (a *Api) delete(c echo.Context) error {
+func (a *Api) deleteInstance(c echo.Context) error {
 	var opts DeleteOpts
 	err := json.NewDecoder(c.Request().Body).Decode(&opts)
 	if err != nil {
@@ -26,7 +26,7 @@ func (a *Api) delete(c echo.Context) error {
 		Namespace: opts.Namespace,
 	}
 
-	if err := a.manager.Delete(c.Request().Context(), args); err != nil {
+	if err := a.manager.DeleteInstance(c.Request().Context(), args); err != nil {
 		return fmt.Errorf("error during deploy: %s", err.Error())
 	}
 
