@@ -10,11 +10,11 @@ import (
 )
 
 type CreateOpts struct {
-	Name        string
-	Replicas    int
-	Namespace   string
-	Protocol    string
-	ServiceName string
+	Name      string
+	Replicas  int
+	Namespace string
+	Plan      string
+	Bind      manager.Bind
 }
 
 func (a *Api) createInstance(c echo.Context) error {
@@ -28,11 +28,8 @@ func (a *Api) createInstance(c echo.Context) error {
 		Name:      opts.Name,
 		Namespace: opts.Namespace,
 		Replicas:  opts.Replicas,
-		Bind: manager.Bind{
-			Protocol:    opts.Protocol,
-			ServiceName: opts.ServiceName,
-			Namespace:   opts.Namespace,
-		},
+		PlanName:  opts.Plan,
+		Bind:      opts.Bind,
 	}
 
 	if err := a.manager.CreateInstance(c.Request().Context(), args); err != nil {

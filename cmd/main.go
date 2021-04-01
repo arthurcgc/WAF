@@ -18,7 +18,7 @@ limitations under the License.
 package main
 
 import (
-	"github.com/arthurcgc/waf/api"
+	"github.com/arthurcgc/waf-api/api"
 	_ "github.com/arthurcgc/waf/configs"
 )
 

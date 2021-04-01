@@ -5,7 +5,6 @@ type CreateArgs struct {
 	Replicas  int
 	Namespace string
 	PlanName  string
-	ProxyPass string
 	Bind      Bind
 }
 
