@@ -27,6 +27,7 @@ func (a *Api) deleteInstance(c echo.Context) error {
 	}
 
 	if err := a.manager.DeleteInstance(c.Request().Context(), args); err != nil {
+		a.logger.Error(err)
 		return fmt.Errorf("error during deploy: %s", err.Error())
 	}
 

@@ -1,4 +1,3 @@
-VERSION=${WAF_VERSION}
 
 .PHONY: build
 build:
@@ -10,8 +9,8 @@ run: build
 
 .PHONY: image
 image:
-	docker build . -t arthurcgc/waf:$(VERSION)
-	docker push arthurcgc/waf:$(VERSION)
+	docker build . -t arthurcgc/waf:latest
+	docker push arthurcgc/waf:latest
 
 .PHONY: rbac
 rbac:

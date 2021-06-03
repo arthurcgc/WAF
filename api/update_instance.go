@@ -35,6 +35,7 @@ func (a *Api) updateInstance(c echo.Context) error {
 	}
 
 	if err := a.manager.UpdateInstance(c.Request().Context(), args); err != nil {
+		a.logger.Error(err)
 		return fmt.Errorf("error during update: %s", err.Error())
 	}
 

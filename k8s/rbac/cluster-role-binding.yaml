@@ -9,4 +9,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: waf-api-service-account
-  namespace: nginx-operator-system
+  namespace: waf-operator-system
