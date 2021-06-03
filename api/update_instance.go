@@ -9,7 +9,7 @@ import (
 	echo "github.com/labstack/echo/v4"
 )
 
-type CreateOpts struct {
+type UpdateOpts struct {
 	Name      string
 	Replicas  int
 	Namespace string
@@ -18,14 +18,14 @@ type CreateOpts struct {
 	Rules     manager.Rules
 }
 
-func (a *Api) createInstance(c echo.Context) error {
-	var opts CreateOpts
+func (a *Api) updateInstance(c echo.Context) error {
+	var opts UpdateOpts
 	err := json.NewDecoder(c.Request().Body).Decode(&opts)
 	if err != nil {
 		return err
 	}
 
-	args := manager.CreateArgs{
+	args := manager.UpdateArgs{
 		Name:      opts.Name,
 		Namespace: opts.Namespace,
 		Replicas:  opts.Replicas,
@@ -34,9 +34,9 @@ func (a *Api) createInstance(c echo.Context) error {
 		Rules:     opts.Rules,
 	}
 
-	if err := a.manager.CreateInstance(c.Request().Context(), args); err != nil {
-		return fmt.Errorf("error during deploy: %s", err.Error())
+	if err := a.manager.UpdateInstance(c.Request().Context(), args); err != nil {
+		return fmt.Errorf("error during update: %s", err.Error())
 	}
 
-	return c.String(http.StatusCreated, "Created waf resource!\n")
+	return c.String(http.StatusCreated, "Updated waf resource!\n")
 }

@@ -19,7 +19,7 @@ package main
 
 import (
 	"github.com/arthurcgc/waf-api/api"
-	_ "github.com/arthurcgc/waf/configs"
+	_ "github.com/arthurcgc/waf-api/configs"
 )
 
 //

@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+	"k8s.io/client-go/util/retry"
 )
 
 var wafGVR = schema.GroupVersionResource{Group: "waf.arthurcgc.waf-operator", Version: "v1", Resource: "wafs"}
@@ -69,6 +70,14 @@ func (k *k8s) CreateInstance(ctx context.Context, args CreateArgs) error {
 	return nil
 }
 
+func (k *k8s) UpdateInstance(ctx context.Context, args UpdateArgs) error {
+	if err := k.updateWafInstance(ctx, args); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (k *k8s) DeleteInstance(ctx context.Context, args DeleteArgs) error {
 	if err := k.deleteWafInstance(ctx, args); err != nil {
 		return err
@@ -96,6 +105,10 @@ func (k *k8s) createWafInstance(ctx context.Context, args CreateArgs) error {
 					Name:     args.Bind.ServiceName,
 					Hostname: fmt.Sprintf("%s%s.%s.svc.cluster.local", protoPrefix, args.Bind.ServiceName, args.Bind.Namespace),
 				},
+				"rules": wafv1.Rules{
+					CustomRules:           args.Rules.CustomRules,
+					EnableDefaultHoneyPot: args.Rules.EnableDefaultHoneyPot,
+				},
 				"service": map[string]interface{}{
 					"type": "NodePort",
 				},
@@ -106,6 +119,88 @@ func (k *k8s) createWafInstance(ctx context.Context, args CreateArgs) error {
 	_, err := k.dynamicClient.Resource(wafGVR).Namespace(args.Namespace).Create(ctx, waf, metav1.CreateOptions{})
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func setReplicas(wafObject map[string]interface{}, replicas int64) error {
+	if err := unstructured.SetNestedField(wafObject, int64(replicas), "spec", "replicas"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func setPlan(wafObject map[string]interface{}, planName string) error {
+	if err := unstructured.SetNestedField(wafObject, planName, "spec", "planName"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func setBind(wafObject map[string]interface{}, bind Bind, protocol string) error {
+	if err := unstructured.SetNestedField(wafObject, bind.ServiceName, "spec", "bind", "name"); err != nil {
+		return err
+	}
+	hostname := fmt.Sprintf("%s%s.%s.svc.cluster.local", protocol, bind.ServiceName, bind.Namespace)
+	if err := unstructured.SetNestedField(wafObject, hostname, "spec", "bind", "name"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func setRules(wafObject map[string]interface{}, rules Rules) error {
+	sliceInterface := make([]interface{}, len(rules.CustomRules))
+	for i, rule := range rules.CustomRules {
+		sliceInterface[i] = rule
+	}
+	if err := unstructured.SetNestedSlice(wafObject, sliceInterface, "spec", "rules", "customRules"); err != nil {
+		return err
+	}
+	if err := unstructured.SetNestedField(wafObject, rules.EnableDefaultHoneyPot, "spec", "rules", "enableDefaultHoneyPot"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (k *k8s) updateWafInstance(ctx context.Context, args UpdateArgs) error {
+	protoPrefix := "http://"
+	if strings.Compare("HTTPS", args.Bind.Protocol) == 0 {
+		protoPrefix = "https://"
+	}
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		waf, getErr := k.dynamicClient.Resource(wafGVR).Namespace(args.Namespace).Get(ctx, args.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return getErr
+		}
+
+		// update replicas
+		if err := setReplicas(waf.Object, int64(args.Replicas)); err != nil {
+			return err
+		}
+
+		// update plan
+		if err := setPlan(waf.Object, args.PlanName); err != nil {
+			return err
+		}
+
+		// update bind
+		if err := setBind(waf.Object, args.Bind, protoPrefix); err != nil {
+			return err
+		}
+
+		// update rules
+		if err := setRules(waf.Object, args.Rules); err != nil {
+			return err
+		}
+		_, updateErr := k.dynamicClient.Resource(wafGVR).Namespace(args.Namespace).Update(ctx, waf, metav1.UpdateOptions{})
+		return updateErr
+	})
+
+	if retryErr != nil {
+		return retryErr
 	}
 
 	return nil

@@ -30,5 +30,5 @@ func (a *Api) deleteInstance(c echo.Context) error {
 		return fmt.Errorf("error during deploy: %s", err.Error())
 	}
 
-	return c.String(http.StatusOK, "Successfully deleted nginx resource!\n")
+	return c.String(http.StatusOK, "Successfully deleted waf resource!\n")
 }

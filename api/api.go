@@ -43,6 +43,7 @@ func New() (*Api, error) {
 
 func (a *Api) setRoutes() {
 	a.server.POST("/", a.createInstance)
+	a.server.PUT("/", a.updateInstance)
 	a.server.DELETE("/", a.deleteInstance)
 	a.server.GET("/", a.healthcheck)
 }
