@@ -106,6 +106,9 @@ func (k *k8s) createWafInstance(ctx context.Context, args CreateArgs) error {
 					Hostname: fmt.Sprintf("%s%s.%s.svc.cluster.local", protoPrefix, args.Bind.ServiceName, args.Bind.Namespace),
 				},
 				"rules": wafv1.Rules{
+					RulesAfter: &wafv1.RulesAfter{
+						RemoveByTag: args.Rules.RemoveByTag,
+					},
 					CustomRules:           args.Rules.CustomRules,
 					EnableDefaultHoneyPot: args.Rules.EnableDefaultHoneyPot,
 				},
@@ -151,11 +154,18 @@ func setBind(wafObject map[string]interface{}, bind Bind, protocol string) error
 }
 
 func setRules(wafObject map[string]interface{}, rules Rules) error {
-	sliceInterface := make([]interface{}, len(rules.CustomRules))
+	customRulesInterface := make([]interface{}, len(rules.CustomRules))
+	removeByTagInterface := make([]interface{}, len(rules.RemoveByTag))
 	for i, rule := range rules.CustomRules {
-		sliceInterface[i] = rule
+		customRulesInterface[i] = rule
 	}
-	if err := unstructured.SetNestedSlice(wafObject, sliceInterface, "spec", "rules", "customRules"); err != nil {
+	for i, tag := range rules.RemoveByTag {
+		removeByTagInterface[i] = tag
+	}
+	if err := unstructured.SetNestedSlice(wafObject, customRulesInterface, "spec", "rules", "customRules"); err != nil {
+		return err
+	}
+	if err := unstructured.SetNestedSlice(wafObject, removeByTagInterface, "spec", "rules", "removeAfter", "removeByTag"); err != nil {
 		return err
 	}
 	if err := unstructured.SetNestedField(wafObject, rules.EnableDefaultHoneyPot, "spec", "rules", "enableDefaultHoneyPot"); err != nil {

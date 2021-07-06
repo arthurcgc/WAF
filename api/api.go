@@ -24,6 +24,7 @@ func New() (*Api, error) {
 	var mgr manager.Manager
 	var err error
 	if viper.GetBool("outside_cluster") {
+		api.logger.Info("running outside cluster")
 		mgr, err = manager.NewOutsideCluster()
 		if err != nil {
 			return nil, err
